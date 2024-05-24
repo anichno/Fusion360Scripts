@@ -1,0 +1,13 @@
+{
+	"autodeskProduct":	"Fusion",
+	"type":	"addin",
+	"id":	"576779b5-4b4b-4502-95ec-0c5ceabbb0f1",
+	"author":	"Anthony Canino",
+	"description":	{
+		"":	"Add a teardrop cutout to an existing hole for easier 3d printing"
+	},
+	"version":	"0.1",
+	"runOnStartup":	false,
+	"supportedOS":	"windows|mac",
+	"editEnabled":	true
+}
