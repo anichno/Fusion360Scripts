@@ -50,8 +50,8 @@ def run(context):
                     material_folder = folder_path + "/" + material
                     os.makedirs(material_folder)
                     for part in parts_by_material[material]:
-                        part_filename = f"{material_folder}/{part.name}_{part.id}_{root_comp.allOccurrencesByComponent(part).count}.3mf"
-                        export_opts = export_mgr.createC3MFExportOptions(part, part_filename)
+                        part_filename = f"{material_folder}/{part.name}_{part.id}_{root_comp.allOccurrencesByComponent(part).count}.stl"
+                        export_opts = export_mgr.createSTLExportOptions(part, part_filename)
                         export_opts.meshRefinement = 0
                         export_mgr.execute(export_opts)
 
