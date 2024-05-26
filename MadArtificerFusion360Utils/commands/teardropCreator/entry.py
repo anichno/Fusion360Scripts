@@ -233,24 +233,25 @@ def create_teardrop(circle: adsk.fusion.BRepEdge, orientation_axis: adsk.fusion.
     sketch.isComputeDeferred = False
 
     # add extrude through extent
-    extrude_profile = None
-    for i in range(sketch.profiles.count):
-        profile = sketch.profiles.item(i)
-        
-        if profile.face.edges.count == 3:
-            num_line = 0
-            num_arc = 0
-            for j in range(3):
-                geo_type = profile.face.edges.item(j)
-                if isinstance(geo_type.geometry, adsk.core.Line3D):
-                    num_line += 1
-                elif isinstance(geo_type.geometry, adsk.core.Arc3D):
-                    num_arc += 1
-            if num_line == 2 and num_arc == 1:
-                extrude_profile = profile
+    profile_bounds = [s_circle, teardrop1, teardrop2]
+    extrude_profile = get_profile_from_bounds(sketch, profile_bounds)
 
     if extrude_profile is not None:
         extrude_input = component.features.extrudeFeatures.createInput(extrude_profile, adsk.fusion.FeatureOperations.CutFeatureOperation)
         extrude_input.setOneSideExtent(adsk.fusion.ToEntityExtentDefinition.create(end_plane, False), adsk.fusion.ExtentDirections.NegativeExtentDirection)
         component.features.extrudeFeatures.add(extrude_input)
 
+def get_profile_from_bounds(sketch: adsk.fusion.Sketch, bounds):
+    for profile in sketch.profiles:
+        for loop in profile.profileLoops:
+            if len(loop.profileCurves) == len(bounds):
+                resolved_bounds = 0
+                for entity in loop.profileCurves:
+                    if entity.sketchEntity in bounds:
+                        resolved_bounds += 1
+                    else:
+                        break
+                if resolved_bounds == len(bounds):
+                    return profile
+                
+    return None
