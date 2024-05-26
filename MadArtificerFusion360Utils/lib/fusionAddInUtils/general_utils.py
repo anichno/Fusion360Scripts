@@ -11,6 +11,7 @@
 
 import os
 import traceback
+from typing import List
 import adsk.core
 
 app = adsk.core.Application.get()
@@ -62,3 +63,18 @@ def handle_error(name: str, show_message_box: bool = False):
     # If desired you could show an error as a message box.
     if show_message_box:
         ui.messageBox(f'{name}\n{traceback.format_exc()}')
+
+def get_profile_from_sketch_bounds(sketch: adsk.fusion.Sketch, bounds: List[adsk.fusion.SketchCurve]):
+    for profile in sketch.profiles:
+        for loop in profile.profileLoops:
+            if len(loop.profileCurves) == len(bounds):
+                resolved_bounds = 0
+                for entity in loop.profileCurves:
+                    if entity.sketchEntity in bounds:
+                        resolved_bounds += 1
+                    else:
+                        break
+                if resolved_bounds == len(bounds):
+                    return profile
+                
+    return None

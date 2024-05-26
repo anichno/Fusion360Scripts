@@ -2,6 +2,7 @@ import adsk.core
 import os
 
 import adsk.fusion
+from lib.fusionAddInUtils.general_utils import get_profile_from_sketch_bounds
 from ...lib import fusionAddInUtils as futil
 from ... import config
 
@@ -234,24 +235,10 @@ def create_teardrop(circle: adsk.fusion.BRepEdge, orientation_axis: adsk.fusion.
 
     # add extrude through extent
     profile_bounds = [s_circle, teardrop1, teardrop2]
-    extrude_profile = get_profile_from_bounds(sketch, profile_bounds)
+    extrude_profile = get_profile_from_sketch_bounds(sketch, profile_bounds)
 
     if extrude_profile is not None:
         extrude_input = component.features.extrudeFeatures.createInput(extrude_profile, adsk.fusion.FeatureOperations.CutFeatureOperation)
         extrude_input.setOneSideExtent(adsk.fusion.ToEntityExtentDefinition.create(end_plane, False), adsk.fusion.ExtentDirections.NegativeExtentDirection)
         component.features.extrudeFeatures.add(extrude_input)
 
-def get_profile_from_bounds(sketch: adsk.fusion.Sketch, bounds):
-    for profile in sketch.profiles:
-        for loop in profile.profileLoops:
-            if len(loop.profileCurves) == len(bounds):
-                resolved_bounds = 0
-                for entity in loop.profileCurves:
-                    if entity.sketchEntity in bounds:
-                        resolved_bounds += 1
-                    else:
-                        break
-                if resolved_bounds == len(bounds):
-                    return profile
-                
-    return None
