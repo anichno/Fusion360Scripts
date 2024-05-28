@@ -10,9 +10,9 @@ ui = app.userInterface
 
 
 # TODO *** Specify the command identity information. ***
-CMD_ID = f'{config.ADDIN_NAME}_teardropCreator'
-CMD_NAME = 'Teardrop Hole Generator'
-CMD_Description = 'Auto create teardrop holes for better 3d printing'
+CMD_ID = f'{config.ADDIN_NAME}_unsupportedHole'
+CMD_NAME = 'Unsupported Hole Supporter'
+CMD_Description = 'Auto support unsupported holes for better 3d printing'
 
 # Specify that the command will be promoted to the panel.
 IS_PROMOTED = True
@@ -81,21 +81,17 @@ def command_created(args: adsk.core.CommandCreatedEventArgs):
     inputs = args.command.commandInputs
 
     # Where to start teardrop (sketch will be on the plane of this circular edge)
-    start_selection = inputs.addSelectionInput('edgeSelection', "Teardrop Start", "Select edge of hole")
+    start_selection = inputs.addSelectionInput('edgeSelection', "Hole Start", "Select edge of hole")
     start_selection.setSelectionLimits(1, 1)
     start_selection.addSelectionFilter('CircularEdges')
 
-    # Axis of print
-    axis_selection = inputs.addSelectionInput('axisSelection', "Axis (Construction Only)", "Select axis of print orientation")
-    axis_selection.setSelectionLimits(1,1)
-    axis_selection.addSelectionFilter('ConstructionLines')
+    # Number of support layers
+    # num_layers_input = inputs.addValueInput('numLayersValue', "Number of support layers", "int", "2")
+    num_layers_input = inputs.addIntegerSpinnerCommandInput('numLayersValue', "Number of support layers", 1, 10, 1, 2)
 
-    # Teardrop extent
-    extent_selection = inputs.addSelectionInput('extentSelection', "End face", "Select ")
-    extent_selection.setSelectionLimits(1,1)
-    extent_selection.addSelectionFilter('Faces')
+    # Support layer thickness
+    thickness_input = inputs.addValueInput('thicknessValue', "Layer thickness", "mm", adsk.core.ValueInput.createByString("0.2mm"))
 
-    flip_selection = inputs.addDirectionCommandInput('flipSelection', 'Flip')
 
     # TODO Connect to the events that are needed by this command.
     futil.add_handler(args.command.execute, command_execute, local_handlers=local_handlers)
@@ -119,15 +115,14 @@ def command_execute(args: adsk.core.CommandEventArgs):
     edgeInput = inputs.itemById('edgeSelection')
     circle = edgeInput.selection(0).entity
 
-    axisInput = inputs.itemById('axisSelection')
-    orientation_axis = axisInput.selection(0).entity
+    num_layers_input = inputs.itemById('numLayersValue')
+    num_layers = num_layers_input.value
 
-    extentInput = inputs.itemById('extentSelection')
-    extent = extentInput.selection(0).entity
+    layerThicknessInput = inputs.itemById('thicknessValue')
+    layer_thickness = layerThicknessInput.value
 
-    flipInput = inputs.itemById('flipSelection')
-
-    create_teardrop(circle, orientation_axis, extent, flipInput.isDirectionFlipped)
+    # create_teardrop(circle, orientation_axis, extent, flipInput.isDirectionFlipped)
+    create_supports(circle, num_layers, layer_thickness)
 
 
 # This event handler is called when the command needs to compute a new preview in the graphics window.
@@ -157,15 +152,8 @@ def command_validate_input(args: adsk.core.ValidateInputsEventArgs):
     inputs = args.inputs
     
     # Verify the validity of the input values. This controls if the OK button is enabled or not.
-    edgeInput = inputs.itemById('edgeSelection')
-    circle = edgeInput.selection(0).entity
-    circleFace = futil.get_circle_face(circle)
-
-    extentInput = inputs.itemById('extentSelection')
-    extent = extentInput.selection(0).entity
-    
-    # args.areInputsValid = are_faces_parallel(circleFace, extent)
-    args.areInputsValid = True
+    layerThicknessInput = inputs.itemById('thicknessValue')
+    args.areInputsValid = layerThicknessInput.value > 0.0
 
 # This event handler is called when the command terminates.
 def command_destroy(args: adsk.core.CommandEventArgs):
@@ -175,47 +163,87 @@ def command_destroy(args: adsk.core.CommandEventArgs):
     global local_handlers
     local_handlers = []
 
-def create_teardrop(circle: adsk.fusion.BRepEdge, orientation_axis: adsk.fusion.ConstructionAxis, end_plane: adsk.fusion.BRepFace, flip: bool):
+# Via ChatGPT
+def is_point_on_same_side(point, line, ref_line):
+    # Get the start and end points of the SketchLine
+    start_point = line.startSketchPoint.geometry
+    end_point = line.endSketchPoint.geometry
+
+    # Define vectors along the SketchLine and from the SketchLine to the point
+    line_vector = adsk.core.Vector3D.create(end_point.x - start_point.x, end_point.y - start_point.y, 0)
+    point_vector = adsk.core.Vector3D.create(point.x - start_point.x, point.y - start_point.y, 0)
+
+    # Get a point on the reference line (use the start point of the reference line)
+    ref_point = ref_line.startSketchPoint.geometry
+    ref_vector = adsk.core.Vector3D.create(ref_point.x - start_point.x, ref_point.y - start_point.y, 0)
+
+    # Calculate the cross product of line_vector with point_vector and ref_vector
+    cross_product_point = line_vector.crossProduct(point_vector)
+    cross_product_ref = line_vector.crossProduct(ref_vector)
+
+    # Determine if the point is on the same side as the reference line
+    same_side = (cross_product_point.z * cross_product_ref.z) >= 0
+
+    return same_side
+
+
+def create_supports(circle: adsk.fusion.BRepEdge, num_layers: int, layer_thickness: float):
     circle_face = futil.get_circle_face(circle)
     component = circle_face.body.parentComponent
     sketches = component.sketches
-    sketch = sketches.add(circle_face)
+    sketch: adsk.fusion.Sketch = sketches.add(circle_face)
 
     sketch.isComputeDeferred = True
-    sketch.project(circle)
-    sketch.project(orientation_axis)
 
-    s_circle = sketch.sketchCurves.sketchCircles.item(0)
-    s_axis = sketch.sketchCurves.sketchLines.item(0)
-    center = s_circle.centerSketchPoint
-    if flip:
-        diff = -s_circle.radius*2
+    for edge in circle_face.edges:
+        sketch.project(edge)
+
+    assert len(sketch.sketchCurves.sketchCircles) == 2
+
+    if sketch.sketchCurves.sketchCircles[0].geometry.radius < sketch.sketchCurves.sketchCircles[1].geometry.radius:
+        hole_circle = sketch.sketchCurves.sketchCircles[0]
+        outer_circle = sketch.sketchCurves.sketchCircles[1]
     else:
-        diff = s_circle.radius*2
-    next_point = adsk.core.Point3D.create(center.geometry.x + diff, center.geometry.y + diff, 0)
-    anchor_line = sketch.sketchCurves.sketchLines.addByTwoPoints(center, next_point)
-    anchor_line.isConstruction = True
-    anchor_point = anchor_line.endSketchPoint
+        hole_circle = sketch.sketchCurves.sketchCircles[1]
+        outer_circle = sketch.sketchCurves.sketchCircles[0]
 
-    teardrop1 = sketch.sketchCurves.sketchLines.addByTwoPoints(anchor_point, adsk.core.Point3D.create(anchor_point.geometry.x+1, anchor_point.geometry.y+1,0))
-    teardrop2 = sketch.sketchCurves.sketchLines.addByTwoPoints(anchor_point, adsk.core.Point3D.create(anchor_point.geometry.x+1, anchor_point.geometry.y+1,0))
-    
-    # add constraints
-    sketch.geometricConstraints.addParallel(s_axis, anchor_line)
-    sketch.geometricConstraints.addCoincident(teardrop1.endSketchPoint, s_circle)
-    sketch.geometricConstraints.addCoincident(teardrop2.endSketchPoint, s_circle)
-    sketch.geometricConstraints.addTangent(teardrop1, s_circle)
-    sketch.geometricConstraints.addTangent(teardrop2, s_circle)
-    sketch.geometricConstraints.addPerpendicular(teardrop1, teardrop2)
+    center = hole_circle.centerSketchPoint
+
+    num_sides = num_layers*2
+    pattern = sketch.sketchCurves.sketchLines.addScribedPolygon(center, num_sides, 0, 1.0, False)
+
+    sketch.geometricConstraints.addHorizontal(pattern[0])
+
+    lines = list()
+    for i, line in enumerate(pattern):
+        line.isConstruction = True
+
+        # add line which extends all the way to outer_circle
+        new_line = sketch.sketchCurves.sketchLines.addByTwoPoints(adsk.core.Point3D.create(0,0,0), adsk.core.Point3D.create(1,0,0))
+        sketch.geometricConstraints.addCollinear(line, new_line)
+        sketch.geometricConstraints.addCoincident(new_line.startSketchPoint, outer_circle)
+        sketch.geometricConstraints.addCoincident(new_line.endSketchPoint, outer_circle)
+
+        lines.append(new_line)
+
+        if i > 2:
+            # adding constraint to all lines over constrains
+            continue
+        sketch.geometricConstraints.addTangent(line, hole_circle)
+
+    parallel_lines = list()
+    for i in range(num_sides//2):
+        parallel_lines.append((lines[i], lines[num_sides//2+i]))
 
     sketch.isComputeDeferred = False
 
-    # add extrude through extent
-    profile_bounds = [s_circle, teardrop1, teardrop2]
-    extrude_profile = futil.get_profile_from_sketch_bounds(sketch, profile_bounds)
+    # For each set of parallel lines, get all of the outside profiles and
+    # extrude them the correct distance depending on their layer
+    for i, (line1, line2) in enumerate(parallel_lines):
+        extrude_profiles = adsk.core.ObjectCollection.create()
+        for profile in sketch.profiles:
+            centroid = profile.areaProperties().centroid
+            if not is_point_on_same_side(centroid, line1, line2) or not is_point_on_same_side(centroid, line2, line1):
+                extrude_profiles.add(profile)
 
-    if extrude_profile is not None:
-        extrude_input = component.features.extrudeFeatures.createInput(extrude_profile, adsk.fusion.FeatureOperations.CutFeatureOperation)
-        extrude_input.setOneSideExtent(adsk.fusion.ToEntityExtentDefinition.create(end_plane, False), adsk.fusion.ExtentDirections.NegativeExtentDirection)
-        component.features.extrudeFeatures.add(extrude_input)
-
+        component.features.extrudeFeatures.addSimple(extrude_profiles, adsk.core.ValueInput.createByReal(layer_thickness * (i+1)), adsk.fusion.FeatureOperations.JoinFeatureOperation)

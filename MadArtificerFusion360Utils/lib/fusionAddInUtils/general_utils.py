@@ -78,3 +78,13 @@ def get_profile_from_sketch_bounds(sketch: adsk.fusion.Sketch, bounds: List[adsk
                     return profile
                 
     return None
+
+def get_circle_face(circle: adsk.fusion.BRepEdge) -> adsk.fusion.BRepFace | None:
+    faces = circle.faces
+    plane = None
+    for i in range(faces.count):
+        face: adsk.fusion.BRepFace = faces.item(i)
+        if face.geometry.surfaceType == adsk.core.SurfaceTypes.PlaneSurfaceType:
+            plane = face
+
+    return plane
