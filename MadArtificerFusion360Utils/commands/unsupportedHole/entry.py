@@ -32,6 +32,8 @@ ICON_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'resource
 # they are not released and garbage collected.
 local_handlers = []
 
+FEATURE_NAME = "HoleSupport"
+
 # Executed when add-in is run.
 def start():
     # Create a command Definition.
@@ -239,6 +241,7 @@ def create_supports(circle: adsk.fusion.BRepEdge, num_layers: int, layer_thickne
 
     # For each set of parallel lines, get all of the outside profiles and
     # extrude them the correct distance depending on their layer
+    last_index = 0
     for i, (line1, line2) in enumerate(parallel_lines):
         extrude_profiles = adsk.core.ObjectCollection.create()
         for profile in sketch.profiles:
@@ -246,4 +249,22 @@ def create_supports(circle: adsk.fusion.BRepEdge, num_layers: int, layer_thickne
             if not is_point_on_same_side(centroid, line1, line2) or not is_point_on_same_side(centroid, line2, line1):
                 extrude_profiles.add(profile)
 
-        component.features.extrudeFeatures.addSimple(extrude_profiles, adsk.core.ValueInput.createByReal(layer_thickness * (i+1)), adsk.fusion.FeatureOperations.JoinFeatureOperation)
+        extrude = component.features.extrudeFeatures.addSimple(extrude_profiles, adsk.core.ValueInput.createByReal(layer_thickness * (i+1)), adsk.fusion.FeatureOperations.JoinFeatureOperation)
+        last_index = extrude.timelineObject.index
+
+    support_group = app.activeProduct.timeline.timelineGroups.add(sketch.timelineObject.index, last_index)
+
+    max_id = 0
+    for feature in component.parentDesign.rootComponent.features:
+        if feature.name.startswith(FEATURE_NAME):
+            _, id_str = feature.name.split(FEATURE_NAME)
+            if id_str.isdigit():
+                max_id = max(max_id, int(id_str))
+
+    for group in app.activeProduct.timeline.timelineGroups:
+        if group.name.startswith(FEATURE_NAME):
+            _, id_str = group.name.split(FEATURE_NAME)
+            if id_str.isdigit():
+                max_id = max(max_id, int(id_str))
+
+    support_group.name = f"{FEATURE_NAME}{max_id+1}"
