@@ -185,8 +185,11 @@ def create_teardrop(circle: adsk.fusion.BRepEdge, orientation_axis: adsk.fusion.
     sketch.project(circle)
     sketch.project(orientation_axis)
 
-    s_circle = sketch.sketchCurves.sketchCircles.item(0)
-    s_axis = sketch.sketchCurves.sketchLines.item(0)
+    sketch.isComputeDeferred = False
+    sketch.isComputeDeferred = True
+
+    s_circle = sketch.sketchCurves.sketchCircles[0]
+    s_axis = sketch.sketchCurves.sketchLines[0]
     center = s_circle.centerSketchPoint
     if flip:
         diff = -s_circle.radius*2
