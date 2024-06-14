@@ -88,3 +88,6 @@ def get_circle_face(circle: adsk.fusion.BRepEdge) -> adsk.fusion.BRepFace | None
             plane = face
 
     return plane
+
+def convert_to_internal_units(expression):
+    return app.activeProduct.unitsManager.evaluateExpression(expression)
